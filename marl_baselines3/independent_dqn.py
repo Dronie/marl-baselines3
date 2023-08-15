@@ -28,7 +28,6 @@ class IndependentDQN(OffPolicyAlgorithm):
         num_agents: int,
         env: GymEnv,
         learning_rate: Union[float, Schedule] = 1e-4,
-        n_steps: int = 1000,
         batch_size: int = 6000,
         tau: float = 1.0,
         gamma: float = 0.99,
@@ -52,7 +51,6 @@ class IndependentDQN(OffPolicyAlgorithm):
         self.num_envs = env.num_envs // num_agents
         self.observation_space = env.observation_space
         self.action_space = env.action_space
-        self.n_steps = n_steps
         self.tensorboard_log = tensorboard_log
         self.verbose = verbose
         self._logger = None
@@ -63,7 +61,6 @@ class IndependentDQN(OffPolicyAlgorithm):
                 policy=policy,
                 env=dummy_env,
                 learning_rate=learning_rate,
-                n_steps=n_steps,
                 batch_size=batch_size,
                 tau=tau,
                 gamma=gamma,
