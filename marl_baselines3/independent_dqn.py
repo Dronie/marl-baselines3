@@ -1,47 +1,47 @@
 import time
 from collections import deque
-from typing import Any, Dict, List, Optional, Type, Union
+from typing import Any, Dict, List, Optional, Type, Union, Tuple
 
 import gym
 import numpy as np
 import torch as th
 from gym.spaces import Box, Discrete
-from stable_baselines3 import PPO
-from stable_baselines3.common.on_policy_algorithm import OnPolicyAlgorithm
-from stable_baselines3.common.policies import ActorCriticPolicy
+from stable_baselines3.common.off_policy_algorithm import OffPolicyAlgorithm
+from stable_baselines3 import DQN
+from stable_baselines3.common.buffers import ReplayBuffer
+from stable_baselines3.dqn.policies import CnnPolicy, DQNPolicy, MlpPolicy, MultiInputPolicy, QNetwork
 from stable_baselines3.common.type_aliases import (GymEnv, MaybeCallback,
                                                    Schedule)
 from stable_baselines3.common.utils import (configure_logger, obs_as_tensor,
                                             safe_mean)
 from stable_baselines3.common.vec_env import DummyVecEnv
 
-# placeholder class?
 class DummyGymEnv(gym.Env):
     def __init__(self, observation_space, action_space):
         self.observation_space = observation_space
         self.action_space = action_space
 
-# reimplements two methods: learn, collect_rollouts
-class IndependentPPO(OnPolicyAlgorithm):
+class IndependentDQN(OffPolicyAlgorithm):
     def __init__(
         self,
-        policy: Union[str, Type[ActorCriticPolicy]], # used by eug with just a single string
+        policy: Union[str, Type[DQNPolicy]], # used by eug with just a single string
         num_agents: int,
         env: GymEnv,
         learning_rate: Union[float, Schedule] = 1e-4,
         n_steps: int = 1000,
         batch_size: int = 6000,
-        n_epochs: int = 10,
+        tau: float = 1.0,
         gamma: float = 0.99,
-        gae_lambda: float = 1.0,
-        clip_range: Union[float, Schedule] = 0.2, # unused by eug
-        clip_range_vf: Union[None, float, Schedule] = None, # unused by eug
-        ent_coef: float = 0.0,
-        vf_coef: float = 0.5,
+        train_freq: Union[int, Tuple[int, str]] = 4,
+        gradient_steps: int = 1,
+        replay_buffer_class: Optional[Type[ReplayBuffer]] = None,
+        replay_buffer_kwargs: Optional[Dict[str, Any]] = None,
+        optimize_memory_usage: bool = False,
+        target_update_interval: int = 10000,
+        exploration_fraction: float = 0.1,
+        exploration_initial_eps: float = 1.0,
+        exploration_final_eps: float = 0.05,
         max_grad_norm: float = 40,
-        use_sde: bool = False, # unused by eug 
-        sde_sample_freq: int = -1, # unused by eug 
-        target_kl: Optional[float] = None,
         tensorboard_log: Optional[str] = None,
         policy_kwargs: Optional[Dict[str, Any]] = None,
         verbose: int = 0,
@@ -59,23 +59,24 @@ class IndependentPPO(OnPolicyAlgorithm):
         env_fn = lambda: DummyGymEnv(self.observation_space, self.action_space)
         dummy_env = DummyVecEnv([env_fn] * self.num_envs)
         self.policies = [
-            PPO(
+            DQN(
                 policy=policy,
                 env=dummy_env,
                 learning_rate=learning_rate,
                 n_steps=n_steps,
                 batch_size=batch_size,
-                n_epochs=n_epochs,
+                tau=tau,
                 gamma=gamma,
-                gae_lambda=gae_lambda,
-                clip_range=clip_range,
-                clip_range_vf=clip_range_vf,
-                ent_coef=ent_coef,
-                vf_coef=vf_coef,
+                train_freq=train_freq,
+                gradient_steps=gradient_steps,
+                replay_buffer_class=replay_buffer_class,
+                replay_buffer_kwargs=replay_buffer_kwargs,
+                optimize_memory_usage=optimize_memory_usage,
+                target_update_interval=target_update_interval,
+                exploration_fraction=exploration_fraction,
+                exploration_initial_eps=exploration_initial_eps,
+                exploration_final_eps=exploration_final_eps,
                 max_grad_norm=max_grad_norm,
-                target_kl=target_kl,
-                use_sde=use_sde,
-                sde_sample_freq=sde_sample_freq,
                 policy_kwargs=policy_kwargs,
                 verbose=verbose,
                 device=device,
@@ -88,7 +89,7 @@ class IndependentPPO(OnPolicyAlgorithm):
         total_timesteps: int,
         callbacks: Optional[List[MaybeCallback]] = None,
         log_interval: int = 1,
-        tb_log_name: str = "IndependentPPO",
+        tb_log_name: str = "IndependentDQN",
         reset_num_timesteps: bool = True,
     ):
 
@@ -110,7 +111,7 @@ class IndependentPPO(OnPolicyAlgorithm):
             if policy.ep_info_buffer is None or reset_num_timesteps:
                 policy.ep_info_buffer = deque(maxlen=100)
                 policy.ep_success_buffer = deque(maxlen=100)
-
+ 
             if policy.action_noise is not None:
                 policy.action_noise.reset()
 
@@ -320,7 +321,7 @@ class IndependentPPO(OnPolicyAlgorithm):
     def load(
         cls,
         path: str,
-        policy: Union[str, Type[ActorCriticPolicy]],
+        policy: Union[str, Type[DQNPolicy]],
         num_agents: int,
         env: GymEnv,
         n_steps: int,
@@ -328,7 +329,7 @@ class IndependentPPO(OnPolicyAlgorithm):
         tensorboard_log: Optional[str] = None,
         verbose: int = 0,
         **kwargs,
-    ) -> "IndependentPPO":
+    ) -> "IndependentDQN":
         model = cls(
             policy=policy,
             num_agents=num_agents,
@@ -342,7 +343,7 @@ class IndependentPPO(OnPolicyAlgorithm):
         env_fn = lambda: DummyGymEnv(env.observation_space, env.action_space)
         dummy_env = DummyVecEnv([env_fn] * (env.num_envs // num_agents))
         for polid in range(num_agents):
-            model.policies[polid] = PPO.load(
+            model.policies[polid] = DQN.load(
                 path=path + f"/policy_{polid + 1}/model", env=dummy_env, **kwargs
             )
         return model
